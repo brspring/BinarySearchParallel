@@ -13,9 +13,9 @@ OBJS = $(SRCS:.c=.o)
 # Default target
 all: $(TARGET)
 
-# Link the object files to create the executable
+# Link the object files to create the executable, with -lpthread
 $(TARGET): $(OBJS)
-	$(CC) -o $@ $^
+	$(CC) -o $@ $^ -lpthread
 
 # Compile source files to object files
 %.o: %.c
