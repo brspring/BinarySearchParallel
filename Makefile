@@ -25,4 +25,7 @@ $(TARGET): $(OBJS)
 clean:
 	rm -f $(OBJS) $(TARGET)
 
+run:
+	./binary_search_parallel
+
 .PHONY: all clean
