@@ -5,7 +5,7 @@ CC = gcc
 TARGET = binary_search_parallel
 
 # Source files
-SRCS = partA.c
+SRCS = partA.c geraInput.c
 
 # Object files
 OBJS = $(SRCS:.c=.o)

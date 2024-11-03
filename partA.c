@@ -1,13 +1,18 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-// ja add a flag -lpthread no Makefile
 #include <pthread.h>
-#define THREAD_COUNT 4
+#include "geraInput.h"
 
-pthread_barrier_t mybarrier;
+#define THREAD_COUNT 8
+#define QUEUE_SIZE 100000
+#define INPUT_SIZE 16000000
+#define MAX_SIZE 1000000
 
-// Struct usada para passar dados para as threads
+pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t queue_cond = PTHREAD_COND_INITIALIZER;
+pthread_cond_t completion_cond = PTHREAD_COND_INITIALIZER;
+
+// Estrutura para armazenar parâmetros da busca
 typedef struct {
     long long *array;
     int n;
@@ -16,65 +21,102 @@ typedef struct {
     int index;
 } ParametroBusca;
 
-void* bsearch_lower_bound_Parallel(void *arg){
-    // Recebe parâmetros da thread
-    ParametroBusca *dados = (ParametroBusca *)arg;
-    long long *arrLocal = dados->array;
-    int nLocal = dados -> n;
-    long long X = dados->value;
+// Fila de tarefas e variáveis para controle
+ParametroBusca *task_queue[QUEUE_SIZE];
+int queue_start = 0, queue_end = 0, queue_size = 0;
+int completed_tasks = 0;
+int total_tasks = 0;
 
-    // Variáveis do binary search
-    int mid;
-    int low = 0;
-    int high = nLocal;
+// Função que as threads do pool irão executar
+void* worker_thread(void *arg) {
+    int thread_id = *((int*)arg);
+    printf("ThreadID = %d FUNCIONANDO!\n", thread_id);
+    while (1) {
+        ParametroBusca *task;
 
-    // Busca
-    while (low < high) {
-        mid = low + (high - low) / 2;
-
-        if (X <= arrLocal[mid]) {
-            high = mid;
+        // Bloqueia o mutex para acessar a fila de tarefas
+        pthread_mutex_lock(&queue_mutex);
+        while (queue_size == 0) {
+            // Aguarda até que haja uma tarefa disponível
+            pthread_cond_wait(&queue_cond, &queue_mutex);
         }
-        else {
-            low = mid + 1;
+
+        // Remove uma tarefa da fila
+        task = task_queue[queue_start];
+        // printf("Thread %d - Tarefa %d\n", thread_id, queue_start);
+        queue_start = (queue_start + 1) % QUEUE_SIZE;
+        queue_size--;
+
+        pthread_mutex_unlock(&queue_mutex);
+
+        // Executa a busca binária na tarefa
+        int mid;
+        int low = 0;
+        int high = task->n;
+        long long *arrLocal = task->array;
+        long long X = task->value;
+
+        while (low < high) {
+            mid = low + (high - low) / 2;
+            if (X <= arrLocal[mid]) {
+                high = mid;
+            } else {
+                low = mid + 1;
+            }
         }
+        if (low < task->n && arrLocal[low] < X)
+            low++;
+        
+        task->Pos[task->index] = low;
+
+        // Libera a memória da tarefa após a execução
+        free(task);
+
+        // Atualiza o contador de tarefas concluídas
+        pthread_mutex_lock(&queue_mutex);
+        completed_tasks++;
+        if (completed_tasks == total_tasks) {
+            pthread_cond_signal(&completion_cond);  // Sinaliza que todas as tarefas foram concluídas
+        }
+        pthread_mutex_unlock(&queue_mutex);
     }
-    if(low < nLocal && arrLocal[low] < X)
-       low++;
-    
-    //armazena o resultado local no vetor
-    // esse index é para se uma thread terminar antes nao pegar a posicao de outra no vetor
-    dados->Pos[dados->index] = low;
-    printf("Thread %d chegou na barreira! Posição %ld para o valor %lld\n", dados->index, dados->Pos[dados->index], dados->value);
-
-    // Espera todas as threads terminarem para seguirem com o programa. Caso contrário a impressão dos dados sairá errada (uma thread pode não terminar a tempo, por exemplo)
-    pthread_barrier_wait(&mybarrier);
 }
 
-int* bsearch_lower_bound_B(long long array[], int n, long long Q[], int nQ, int *Pos)
-{   
-    pthread_t threads[THREAD_COUNT];
-    int *index = malloc(sizeof(int));
-    ParametroBusca parametros[3];
-    // Inicializa a barreira com o número de threads
-    pthread_barrier_init(&mybarrier, NULL, nQ);
-    for (int i = 0; i < nQ; i++){
-        // criar uma thread para cada elemento do vetor Q
-        parametros[i].array = array;
-        parametros[i].value = Q[i];
-        parametros[i].Pos = Pos;
-        parametros[i].n = n;
-        parametros[i].index = i;
-        pthread_create(&threads[i], NULL, bsearch_lower_bound_Parallel, &parametros[i]);
-    }
+void add_task_to_queue(ParametroBusca *task) {
+    pthread_mutex_lock(&queue_mutex);
 
-    // Aguarda todas as threads terminarem
+    // Adiciona a tarefa à fila de tarefas
+    task_queue[queue_end] = task;
+    queue_end = (queue_end + 1) % QUEUE_SIZE;
+    queue_size++;
+
+    pthread_cond_signal(&queue_cond);  // Sinaliza para as threads que há uma nova tarefa
+    pthread_mutex_unlock(&queue_mutex);
+}
+
+// Função principal que adiciona as tarefas ao pool de threads
+int* bsearch_lower_bound_B(long long array[], int n, long long Q[], int nQ, int *Pos) {
+    total_tasks = nQ;  // Define o número total de tarefas que devem ser concluídas
+
     for (int i = 0; i < nQ; i++) {
-        pthread_join(threads[i], NULL);
+        // Cria um novo parâmetro de busca para cada elemento de Q
+        ParametroBusca *param = malloc(sizeof(ParametroBusca));
+        param->array = array;
+        param->value = Q[i];
+        param->Pos = Pos;
+        param->n = n;
+        param->index = i;
+
+        // Adiciona a tarefa ao pool de threads
+        add_task_to_queue(param);
     }
 
-    // Destrói a barreira após o uso
-    pthread_barrier_destroy(&mybarrier);
+    // Aguarda todas as tarefas serem concluídas
+    pthread_mutex_lock(&queue_mutex);
+    while (completed_tasks < total_tasks) {
+        pthread_cond_wait(&completion_cond, &queue_mutex);
+    }
+    pthread_mutex_unlock(&queue_mutex);
 
     return Pos;
 }
@@ -85,26 +127,25 @@ void printPos(int *Pos, int nQ) {
     }
 }
 
+
 int main() {
-    long long Input[] = { 0, 2, 5, 7, 8 };
-    int n = 5;
-    long long Q[] = { 3, 8, 9 };
-    srand(time(NULL));
+    int *Pos = (int *)malloc(QUEUE_SIZE * sizeof(int));
+    long long *Input = gerarVetor(INPUT_SIZE, MAX_SIZE, 1);
+    long long *Q = gerarVetor(QUEUE_SIZE, MAX_SIZE, 0);
 
-    // ---------------- TESTES ----------------
-    // Retorna {2,4,5}
-    int nQ = 3;
-    int *Pos = (int *)malloc(nQ * sizeof(int)); // Aloca memória para o array Pos
-    bsearch_lower_bound_B(Input, n, Q, nQ, Pos);
-    printPos(Pos, nQ);
+    // Inicializa o pool de threads
+    pthread_t threads[THREAD_COUNT];
+    for (int i = 0; i < THREAD_COUNT; i++) {
+        int *idx = malloc(sizeof(int));
+        *idx = i;
+        pthread_create(&threads[i], NULL, worker_thread, idx);
+    }
 
-    // Retorna {2,4}
-    nQ = 2;
-    int *Pos2 = (int *)malloc(nQ * sizeof(int)); // Aloca memória para o array Pos
-    bsearch_lower_bound_B(Input, n, Q, nQ, Pos2);
-    printPos(Pos2, nQ);
-    // ----------------------------------------
+    bsearch_lower_bound_B(Input, INPUT_SIZE, Q, QUEUE_SIZE, Pos);
 
-    free(Pos); // Libera a memória alocada para Pos
+    // Exibe os resultados
+    // printPos(Pos, nQ);
+
+    free(Pos);  // Libera a memória alocada para Pos
     return 0;
 }
