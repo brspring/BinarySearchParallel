@@ -1,12 +1,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <string.h>
+#include <time.h>
+
 #include "geraInput.h"
 
 #define THREAD_COUNT 1
-#define QUEUE_SIZE 100000
-#define INPUT_SIZE 16000000
-#define MAX_SIZE 1000000
+#define INPUT_SIZE 10
+#define MAX_SIZE 10000000
+#define NUM_MEDIÇÕES 1
 
 pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -27,7 +30,7 @@ void* worker_thread_A(void *arg) {
     long long X = param->value;
     
     while (low < high) {
-        int mid = low + (high - low) / 2;
+        long long mid = low + (high - low) / 2;
         if (X <= arr[mid]) {
             high = mid;
         } else {
@@ -40,7 +43,8 @@ void* worker_thread_A(void *arg) {
     if((low <= param->n && arr[low] >= X))
         param->result = low;
     else{    
-        param->result = -1;
+        printf("mudou\n");
+        param->result = param->n;
     }
     pthread_mutex_unlock(&queue_mutex);
 
@@ -80,13 +84,58 @@ int bsearch_lower_bound_A(long long array[], int n, long long value) {
     return final_result;
 }
 
+// int main() {
+//     long long *Input = gerarVetor(INPUT_SIZE, MAX_SIZE, 1);
+//     long long int n = INPUT_SIZE;
+//     long long value = 255555;
+
+//     long long int resultado = bsearch_lower_bound_A(Input, n, value);
+//     printf("resultado = %lld\n", resultado);
+
+//     return 0;
+// }
+
+void preencher_vetor_temporario(long long *temp_array, int tamanho) {
+    for (int i = 0; i < tamanho; i++) {
+        temp_array[i] = rand() % MAX_SIZE;
+    }
+}
+
 int main() {
-    long long *Input = gerarVetor(INPUT_SIZE, MAX_SIZE, 1);
+    srand(time(NULL));
+    long long *InputOriginal = gerarVetor(INPUT_SIZE, MAX_SIZE, 1);
     long long int n = INPUT_SIZE;
-    long long value = 202;
+    long long value = 100000000;
 
-    long long int resultado = bsearch_lower_bound_A(Input, n, value);
-    printf("resultado = %lld\n", resultado);
+    long long *temp_array = (long long*)malloc(INPUT_SIZE * sizeof(long long));
+    preencher_vetor_temporario(temp_array, INPUT_SIZE);
 
+    double tempo_total = 0.0;  // Para armazenar o tempo total
+
+    for (int i = 0; i < NUM_MEDIÇÕES; i++) {
+        long long *Input = (long long*)malloc(INPUT_SIZE * sizeof(long long));
+        memcpy(Input, InputOriginal, INPUT_SIZE * sizeof(long long));
+        
+        preencher_vetor_temporario(temp_array, INPUT_SIZE);
+
+        // Início da medição de tempo
+        clock_t inicio = clock();
+
+        long long int resultado = bsearch_lower_bound_A(Input, n, value);
+
+        // Fim da medição de tempo
+        clock_t fim = clock();
+
+        double tempo_gasto = (double)(fim - inicio) / CLOCKS_PER_SEC;
+        tempo_total += tempo_gasto;
+        printf("valor = %d - resultado = %lld, Tempo = %.6f segundos\n", value, resultado, tempo_gasto);
+
+        free(Input);
+    }
+
+    printf("Tempo médio = %.6f segundos\n", tempo_total / NUM_MEDIÇÕES);
+
+    free(InputOriginal);
+    free(temp_array);
     return 0;
 }

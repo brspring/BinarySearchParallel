@@ -7,6 +7,7 @@
 #define QUEUE_SIZE 100000
 #define INPUT_SIZE 16000000
 #define MAX_SIZE 1000000
+#define NUM_COPIAS 10
 
 pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t queue_cond = PTHREAD_COND_INITIALIZER;
@@ -150,5 +151,44 @@ int main() {
     printPos(Pos, QUEUE_SIZE);
 
     free(Pos);  // Libera a memória alocada para Pos
+    return 0;
+}
+
+int main2() {
+    // Criando um vetor grande de entradas e um vetor grande de queries
+    long long *InputG = malloc(INPUT_SIZE * NUM_COPIAS * sizeof(long long));
+    long long *QG = malloc(QUEUE_SIZE * NUM_COPIAS * sizeof(long long));
+
+    // Preenchendo as cópias de InputG e QG
+    for (int i = 0; i < NUM_COPIAS; i++) {
+        long long *InputCopy = gerarVetor(INPUT_SIZE, MAX_SIZE, 1);
+        memcpy(InputG + i * INPUT_SIZE, InputCopy, INPUT_SIZE * sizeof(long long));
+        free(InputCopy);
+        long long *QCopy = gerarVetor(QUEUE_SIZE, MAX_SIZE, 1);
+        memcpy(QG + i * QUEUE_SIZE, QCopy, QUEUE_SIZE * sizeof(long long));
+        free(QCopy);
+    }
+
+    // Medindo tempo de execução usando diferentes cópias
+    double tempo_total = 0.0;
+    for (int i = 0; i < NUM_COPIAS; i++) {
+        long long *Input = InputG + i * INPUT_SIZE;
+        long long *Q = QG + i * QUEUE_SIZE;
+
+        clock_t inicio = clock();
+        long long int resultado = bsearch_lower_bound_A(Input, INPUT_SIZE, 202);
+        clock_t fim = clock();
+
+        tempo_total += (double)(fim - inicio) / CLOCKS_PER_SEC;
+        printf("Execução %d: resultado = %lld\n", i+1, resultado);
+    }
+
+    double tempo_medio = tempo_total / NUM_COPIAS;
+    printf("Tempo médio (sem caching): %f segundos\n", tempo_medio);
+
+    // Liberando memória
+    free(InputG);
+    free(QG);
+
     return 0;
 }
