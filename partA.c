@@ -3,7 +3,7 @@
 #include <pthread.h>
 #include "geraInput.h"
 
-#define THREAD_COUNT 4
+#define THREAD_COUNT 1
 #define QUEUE_SIZE 100000
 #define INPUT_SIZE 16000000
 #define MAX_SIZE 1000000
@@ -12,17 +12,17 @@ pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 typedef struct {
     long long *array;
-    int n;
+    long long int n;
     long long value;
-    int result;
+    long long int result;
     long long start;
     long long end;
 } ParametroBuscaA;
 
 void* worker_thread_A(void *arg) {
     ParametroBuscaA *param = (ParametroBuscaA*)arg;
-    int low = param->start;
-    int high = param->end;
+    long long int low = param->start;
+    long long int high = param->end;
     long long *arr = param->array;
     long long X = param->value;
     
@@ -37,7 +37,7 @@ void* worker_thread_A(void *arg) {
 
     pthread_mutex_lock(&queue_mutex);
     // Armazena o menor índice encontrado pela thread em `param->result`
-    if((low < param->n && arr[low] >= X))
+    if((low <= param->n && arr[low] >= X))
         param->result = low;
     else{    
         param->result = -1;
@@ -50,7 +50,7 @@ void* worker_thread_A(void *arg) {
 int bsearch_lower_bound_A(long long array[], int n, long long value) {
     pthread_t threads[THREAD_COUNT];
     ParametroBuscaA params[THREAD_COUNT];
-    int segment_size = n / THREAD_COUNT;
+    long long int segment_size = n / THREAD_COUNT;
 
     // Cria as threads e divide o array em segmentos
     for (int i = 0; i < THREAD_COUNT; i++) {
@@ -81,12 +81,12 @@ int bsearch_lower_bound_A(long long array[], int n, long long value) {
 }
 
 int main() {
-    long long Input[] = { 0, 2, 5, 7, 8, 9, 9, 9, 9, 10, 19, 20 };
-    int n = 12;
-    long long value = 21;
+    long long *Input = gerarVetor(INPUT_SIZE, MAX_SIZE, 1);
+    long long int n = INPUT_SIZE;
+    long long value = 202;
 
-    int resultado = bsearch_lower_bound_A(Input, n, value);
-    printf("resultado = %d\n", resultado);
+    long long int resultado = bsearch_lower_bound_A(Input, n, value);
+    printf("resultado = %lld\n", resultado);
 
     return 0;
 }
