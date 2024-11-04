@@ -1,14 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <pthread.h>
+#include <string.h>
 #include "geraInput.h"
 
-#define THREAD_COUNT 2
+#define THREAD_COUNT 8
 #define QUEUE_SIZE 100000
 #define INPUT_SIZE 16000000
 #define MAX_SIZE 1000000
-#define NUM_COPIES 10
+#define NUM_COPIAS 10
 
 pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t queue_cond = PTHREAD_COND_INITIALIZER;
@@ -17,21 +17,21 @@ pthread_cond_t completion_cond = PTHREAD_COND_INITIALIZER;
 // Estrutura para armazenar parâmetros da busca
 typedef struct {
     long long *array;
-    int n;
+    long long int n;
     long long value;
-    int *Pos;
-    int index;
+    long long int *Pos;
+    long long int index;
 } ParametroBusca;
 
 // Fila de tarefas e variáveis para controle
 ParametroBusca *task_queue[QUEUE_SIZE];
-int queue_start = 0, queue_end = 0, queue_size = 0;
-int completed_tasks = 0;
-int total_tasks = 0;
+long long int queue_start = 0, queue_end = 0, queue_size = 0;
+long long int completed_tasks = 0;
+long long int total_tasks = 0;
 
 // Função que as threads do pool irão executar
 void* worker_thread(void *arg) {
-    int thread_id = *((int*)arg);
+    long long int thread_id = *((long long int*)arg);
     //printf("ThreadID = %d FUNCIONANDO!\n", thread_id);
     while (1) {
         ParametroBusca *task;
@@ -52,9 +52,9 @@ void* worker_thread(void *arg) {
         pthread_mutex_unlock(&queue_mutex);
 
         // Executa a busca binária na tarefa
-        int mid;
-        int low = 0;
-        int high = task->n;
+        long long int mid;
+        long long int low = 0;
+        long long int high = task->n;
         long long *arrLocal = task->array;
         long long X = task->value;
 
@@ -97,7 +97,7 @@ void add_task_to_queue(ParametroBusca *task) {
 }
 
 // Função principal que adiciona as tarefas ao pool de threads
-int* bsearch_lower_bound_B(long long array[], int n, long long Q[], int nQ, int *Pos) {
+long long int* bsearch_lower_bound_B(long long array[], int n, long long Q[], long long  nQ, long long int *Pos) {
     total_tasks = nQ;  // Define o número total de tarefas que devem ser concluídas
 
     for (int i = 0; i < nQ; i++) {
@@ -129,31 +129,21 @@ void printPos(int *Pos, int nQ) {
     }
 }
 
-double medirTempoExecucao(long long *input, long long *q, int *pos, int input_size, int queue_size) {
-    printf("executando...\n");
-    clock_t inicio = clock();
-    bsearch_lower_bound_B(input, input_size, q, queue_size, pos);
-    clock_t fim = clock();
-    return (double)(fim - inicio) / CLOCKS_PER_SEC;
-}
 
 int main() {
-    int *Pos = (int *)malloc(NUM_COPIES * QUEUE_SIZE * sizeof(int));
+    long long int *Pos = (long long int *)malloc(QUEUE_SIZE * sizeof(long long int));
 
-    //gera as cópias de Input e Q em InputG e QG
-    long long *InputG = (long long *)malloc(NUM_COPIES * INPUT_SIZE * sizeof(long long));
-    long long *QG = (long long *)malloc(NUM_COPIES * QUEUE_SIZE * sizeof(long long));
-    
-    long long *input_original = gerarVetor(INPUT_SIZE, MAX_SIZE, 1);
-    long long *q_original = gerarVetor(QUEUE_SIZE, MAX_SIZE, 0);
+    long long *InputG = (long long *)malloc(INPUT_SIZE * NUM_COPIAS * sizeof(long long));
+    long long *QG = (long long *)malloc(QUEUE_SIZE * NUM_COPIAS * sizeof(long long));
 
-    //preenche InputG e QG com as cópias de input_original e q_original
-    for (int i = 0; i < NUM_COPIES; i++) {
-        memcpy(InputG + i * INPUT_SIZE, input_original, INPUT_SIZE * sizeof(long long));
-        memcpy(QG + i * QUEUE_SIZE, q_original, QUEUE_SIZE * sizeof(long long));
+    long long *Input = gerarVetor(INPUT_SIZE, MAX_SIZE, 1);
+    long long *Q = gerarVetor(QUEUE_SIZE, MAX_SIZE, 0);
+
+    for (int i = 0; i < NUM_COPIAS; i++) {
+        memcpy(&InputG[i * INPUT_SIZE], Input, INPUT_SIZE * sizeof(long long));
+        memcpy(&QG[i * QUEUE_SIZE], Q, QUEUE_SIZE * sizeof(long long));
     }
 
-    //inicializa o pool de threads
     pthread_t threads[THREAD_COUNT];
     for (int i = 0; i < THREAD_COUNT; i++) {
         int *idx = malloc(sizeof(int));
@@ -161,28 +151,18 @@ int main() {
         pthread_create(&threads[i], NULL, worker_thread, idx);
     }
 
-    double soma_tempos = 0.0;
-    for (int i = 0; i < NUM_COPIES; i++) {
-        double tempo_execucao = medirTempoExecucao(
-            InputG + i * INPUT_SIZE,
-            QG + i * QUEUE_SIZE,
-            Pos + i * QUEUE_SIZE,
-            INPUT_SIZE,
-            QUEUE_SIZE
-        );
-        soma_tempos += tempo_execucao;
+    double total_time = 0.0;
+    for (int i = 0; i < NUM_COPIAS; i++) {
+        clock_t start = clock();
+        bsearch_lower_bound_B(&InputG[i * INPUT_SIZE], INPUT_SIZE, &QG[i * QUEUE_SIZE], QUEUE_SIZE, Pos);
+        clock_t end = clock();
+
+        double time_taken = (double)(end - start) / CLOCKS_PER_SEC;
+        total_time += time_taken;
+        printf("Execução %d: %f segundos\n", i + 1, time_taken);
     }
 
-    //calcula a média dos tempos de execução
-    double media_tempo = soma_tempos / NUM_COPIES;
-    printf("Tempo médio de execução: %.6f segundos\n", media_tempo);
-
-    //libera memória alocada
-    free(Pos);
-    free(InputG);
-    free(QG);
-    free(input_original);
-    free(q_original);
+    printf("Tempo médio: %f segundos\n", total_time / NUM_COPIAS);
 
     return 0;
 }
