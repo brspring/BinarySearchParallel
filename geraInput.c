@@ -48,6 +48,6 @@ int* gerarPos(int size) {
 
 void printVetor(int size, long long *vetor) {
     for(int i=0; i<size; i++) {
-        printf("Vetor[%d] = %d\n", i, vetor[i]);
+        printf("Vetor[%d] = %lld\n", i, vetor[i]);
     }
 }
